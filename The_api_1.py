@@ -2,15 +2,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import logging
-from catboost import CatBoostRegressor, Pool
+from catboost import CatBoostRegressor
 import pandas as pd
 # from tensorflow.keras.models import load_model
 
-import catboost
+# import catboost
 
 # catboost 모델 로드
-loaded_model = catboost.CatBoost()
-loaded_model.load_model('bbbro_sample_model.h5')
+loaded_model = CatBoostRegressor()
+loaded_model.load_model('catboost1_model.cbm')
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -18,25 +18,7 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 
 logging.basicConfig(level=logging.INFO)
 
-sample_data = {
-    'GENDER': '여',
-    'AGE_GRP': 30.0,
-    'TRAVEL_STYL_1': 3,# 자연 vs 도시
-    'TRAVEL_STYL_2': 2,# 숙박 vs 당일
-    'TRAVEL_STYL_3': 1,# 새로운지역 vs ~
-    'TRAVEL_STYL_4': 2,
-    'TRAVEL_STYL_5': 6,
-    'TRAVEL_STYL_6': 4,
-    'TRAVEL_STYL_7': 2,
-    'TRAVEL_STYL_8': 7,
-    'TRAVEL_MOTIVE_1': 1,
-    'TRAVEL_COMPANIONS_NUM': 1.0,
-    'TRAVEL_MISSION_INT': 22,
-    'VISIT_AREA_NM': 'whatever',
-    'DGSTFN': 4.0
-}
-
-DB = {
+Data = {
     'GENDER': ['남', '여', '여', '남', '남', '남', '여', '여', '남', '남'],
     'AGE_GRP': [30.0, 40.0, 30.0, 30.0, 20.0, 40.0, 30.0, 40.0, 20.0, 30.0],
     'TRAVEL_STYL_1': [4, 4, 4, 7, 6, 6, 1, 2, 7, 3],
@@ -54,9 +36,53 @@ DB = {
     'DGSTFN': [4.0, 4.0, 5.0, 4.0, 4.0, 5.0, 4.0, 4.0, 5.0, 3.0]
 }
 
+# 데이터를 pandas DataFrame으로 변환
+Data = pd.DataFrame(Data)
+
+categorical_features_names = [
+    'GENDER',
+    # 'AGE_GRP',
+    'TRAVEL_STYL_1', 'TRAVEL_STYL_2', 'TRAVEL_STYL_3', 'TRAVEL_STYL_4', 'TRAVEL_STYL_5', 'TRAVEL_STYL_6', 'TRAVEL_STYL_7', 'TRAVEL_STYL_8',
+    'TRAVEL_MOTIVE_1',
+    # 'TRAVEL_COMPANIONS_NUM',
+    'TRAVEL_MISSION_INT',
+    'VISIT_AREA_NM',
+    # 'DGSTFN',
+]
+
+# df_filter = df[~df['TRAVEL_MISSION_CHECK'].isnull()].copy()
+
+# df_filter.loc[:, 'TRAVEL_MISSION_INT'] = df_filter['TRAVEL_MISSION_CHECK'].str.split(';').str[0].astype(int)
+
+# df_filter
+
+df_filter = Data[[
+    'GENDER',
+    'AGE_GRP',
+    'TRAVEL_STYL_1', 'TRAVEL_STYL_2', 'TRAVEL_STYL_3', 'TRAVEL_STYL_4', 'TRAVEL_STYL_5', 'TRAVEL_STYL_6', 'TRAVEL_STYL_7', 'TRAVEL_STYL_8',
+    'TRAVEL_MOTIVE_1',
+    'TRAVEL_COMPANIONS_NUM',
+    'TRAVEL_MISSION_INT',
+    'VISIT_AREA_NM',
+    'DGSTFN',
+]]
+
+df_filter = df_filter.dropna()
+
+df_filter[categorical_features_names[1:-1]] = df_filter[categorical_features_names[1:-1]].astype(int)
+
+area_names = df_filter[['VISIT_AREA_NM']].drop_duplicates()
+
+# area_names
+
+# df_filter
+
+
 @app.route('/')
 def index():
     return 'Server is running'
+
+# Database = df_filter[['VISIT_AREA_NM']].drop_duplicates()
 
 @app.route('/vote', methods=["POST"])
 def predict():
@@ -68,44 +94,54 @@ def predict():
         logging.error("Data format error: Data should be a list")
         return jsonify({'error': 'Data format error: Data should be a list'}), 400
 
-    # 예시 데이터
-    # data = [
-    #     {'answer': 'Y', 'questionId': 1},
-    #     {'answer': 'Y', 'questionId': 2},
-    #     {'answer': 'Y', 'questionId': 3},
-    #     {'answer': 'Y', 'questionId': 4}
-    # ]
-
 # 질문 ID에 따라 답변을 매핑하는 딕셔너리 생성
     answer_mapping = {item['questionId']: (2 if item['answer'] == 'Y' else 8) for item in data}
 
+    # input_data = [
+    #     '여',
+    #     30,
+    #     answer_mapping.get(1, 3),  # TRAVEL_STYL_1, 기본값 3
+    #     answer_mapping.get(2, 2),  # TRAVEL_STYL_2, 기본값 2
+    #     answer_mapping.get(3, 1),  # TRAVEL_STYL_3, 기본값 1
+    #     answer_mapping.get(4, 2),  # TRAVEL_STYL_4, 기본값 2
+    #     6, # TRAVEL_STYL_5 고정 값
+    #     4, # TRAVEL_STYL_6 고정 값
+    #     2, # TRAVEL_STYL_7 고정 값
+    #     7, # TRAVEL_STYL_8 고정 값
+    #     1, # TRAVEL_MOTIVE_1 고정 값
+    #     1, # TRAVEL_COMPANIONS_NUM 고정 값
+    #     0, # TRAVEL_MISSION_INT 고정 값
+    #     3 # DGSTFN 고정 값
+    # ]
+    traveler = {
+    'GENDER': '남',
+    'AGE_GRP': 20.0,
+    'TRAVEL_STYL_1': answer_mapping.get(1, 3),
+    'TRAVEL_STYL_2': answer_mapping.get(2, 2),
+    'TRAVEL_STYL_3': answer_mapping.get(2, 2),
+    'TRAVEL_STYL_4': answer_mapping.get(4, 2),
+    'TRAVEL_STYL_5': 2,
+    'TRAVEL_STYL_6': 2,
+    'TRAVEL_STYL_7': 2,
+    'TRAVEL_STYL_8': 3,
+    'TRAVEL_MOTIVE_1': 8,
+    'TRAVEL_COMPANIONS_NUM': 0.0,
+    'TRAVEL_MISSION_INT': 3,
+    }
+
     results = pd.DataFrame([], columns=['AREA', 'SCORE'])
-    for item in data:
-        # 모델 입력을 위한 사용자 데이터 준비
-        input_data = [
-            '여',
-            30,
-            answer_mapping.get(1, 3),  # TRAVEL_STYL_1, 기본값 3
-            answer_mapping.get(2, 2),  # TRAVEL_STYL_2, 기본값 2
-            answer_mapping.get(3, 1),  # TRAVEL_STYL_3, 기본값 1
-            answer_mapping.get(4, 2),  # TRAVEL_STYL_4, 기본값 2
-            6, # TRAVEL_STYL_5 고정 값
-            4, # TRAVEL_STYL_6 고정 값
-            2, # TRAVEL_STYL_7 고정 값
-            7, # TRAVEL_STYL_8 고정 값
-            1, # TRAVEL_MOTIVE_1 고정 값
-            1, # TRAVEL_COMPANIONS_NUM 고정 값
-            22, # TRAVEL_MISSION_INT 고정 값
-            4 # DGSTFN 고정 값
-        ]
+    for area in area_names['VISIT_AREA_NM']:
+        input = list(traveler.values())
         # 여기서 모델을 사용하여 점수를 예측 (가정)
-        score = loaded_model.predict(input_data)
+        input.append(area)
+        score = loaded_model.predict(input)
         
         # 결과에 추가
-        results = pd.concat([results, pd.DataFrame([[item['VISIT_AREA_NM'], score]], columns=['AREA', 'SCORE'])])
+        # results = pd.concat([results, pd.DataFrame([[item['VISIT_AREA_NM'], score]], columns=['AREA', 'SCORE'])])
+        results = pd.concat([results, pd.DataFrame([[area, score]], columns=['AREA', 'SCORE'])])
     
-    # 점수가 높은 상위 10개 지역 정렬
-    top_results = results.sort_values('SCORE', ascending=False)[:10].to_dict('records')
+    # 점수가 높은 상위 5개 지역 정렬
+    top_results = results.sort_values('SCORE', ascending=False)[:5].to_dict('records')
 
     # Node.js 서버로 결과 데이터를 전송
     node_js_endpoint = 'http://localhost:3000/receive_data'
